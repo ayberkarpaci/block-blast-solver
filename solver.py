@@ -22,6 +22,7 @@ NOT_2_RIGHT_COLS = FULL & ~COL_MASKS[6] & ~COL_MASKS[7]
 # Heuristic weights
 LINE_SCORE = 10
 MULTI_CLEAR_BONUS = 15  # per extra line cleared in the same move
+COMBO_BONUS = 25  # per consecutive clearing placement (combo streak)
 HOLE_PENALTY = 5
 NO_OPEN_3X3_PENALTY = 20
 FILLED_CELL_PENALTY = 0.5
@@ -126,7 +127,13 @@ def solve(board: np.ndarray, pieces: list[np.ndarray | None]) -> tuple[list[Move
     best_moves: list[Move] = []
     best_key = (-1, float("-inf"))  # (pieces placed, score)
 
-    def search(bits: int, remaining: tuple[int, ...], moves: list[Move], score: float) -> None:
+    def search(
+        bits: int,
+        remaining: tuple[int, ...],
+        moves: list[Move],
+        score: float,
+        streak: int,
+    ) -> None:
         nonlocal best_moves, best_key
         key = (len(moves), score + final_board_score(bits))
         if key > best_key:
@@ -142,8 +149,12 @@ def solve(board: np.ndarray, pieces: list[np.ndarray | None]) -> tuple[list[Move
             gained = LINE_SCORE * lines
             if lines > 1:
                 gained += MULTI_CLEAR_BONUS * (lines - 1)
+            # The game multiplies points for clearing with consecutive
+            # placements, so chains of clears beat isolated ones.
+            if lines:
+                gained += COMBO_BONUS * streak
             moves.append((index, r, c))
-            search(placed, rest, moves, score + gained)
+            search(placed, rest, moves, score + gained, streak + 1 if lines else 0)
             moves.pop()
 
     seen_orders = set()
@@ -152,6 +163,6 @@ def solve(board: np.ndarray, pieces: list[np.ndarray | None]) -> tuple[list[Move
         if signature in seen_orders:
             continue
         seen_orders.add(signature)
-        search(start, order, [], 0.0)
+        search(start, order, [], 0.0, 0)
 
     return best_moves, best_key[1]
