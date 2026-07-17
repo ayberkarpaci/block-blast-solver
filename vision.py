@@ -19,6 +19,13 @@ import numpy as np
 
 DEBUG_DIR = "debug"
 
+# A slot is considered empty below this many vivid pixels (in units of
+# one tray cell's area). Cells inside a piece's bounding box count as
+# occupied above this fill fraction.
+MIN_SLOT_FILL = 0.5
+CELL_OCCUPANCY = 0.35
+MAX_PIECE_SPAN = 5
+
 
 def scale_point(point: list[int], config: dict, img: np.ndarray) -> tuple[int, int]:
     ref_w, ref_h = config["reference_size"]
@@ -65,6 +72,55 @@ def read_board(img: np.ndarray, config: dict) -> np.ndarray:
     return board
 
 
+def vivid_mask(img: np.ndarray, config: dict) -> np.ndarray:
+    """Boolean mask of pixels that look like placed/piece blocks."""
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    return (hsv[:, :, 1] >= config["fill_saturation_threshold"]) & (
+        hsv[:, :, 2] >= config["fill_value_threshold"]
+    )
+
+
+def read_pieces(img: np.ndarray, config: dict) -> list[np.ndarray | None]:
+    """Read the 3 tray slots into shape matrices (None = empty slot).
+
+    Each piece is returned as a small 0/1 matrix, e.g. an L piece:
+        [[1, 0],
+         [1, 0],
+         [1, 1]]
+    """
+    mask = vivid_mask(img, config)
+    x0, y0 = scale_point(config["tray_tl"], config, img)
+    x1, y1 = scale_point(config["tray_br"], config, img)
+    cell = config["tray_cell_size"] * img.shape[1] / config["reference_size"][0]
+    slot_w = (x1 - x0) / 3
+
+    pieces: list[np.ndarray | None] = []
+    for slot in range(3):
+        sx0 = round(x0 + slot * slot_w)
+        sx1 = round(x0 + (slot + 1) * slot_w)
+        sub = mask[y0:y1, sx0:sx1]
+        ys, xs = np.nonzero(sub)
+        if len(xs) < MIN_SLOT_FILL * cell * cell:
+            pieces.append(None)
+            continue
+
+        bx0, bx1 = xs.min(), xs.max() + 1
+        by0, by1 = ys.min(), ys.max() + 1
+        cols = min(MAX_PIECE_SPAN, max(1, round((bx1 - bx0) / cell)))
+        rows = min(MAX_PIECE_SPAN, max(1, round((by1 - by0) / cell)))
+        shape = np.zeros((rows, cols), dtype=np.uint8)
+        for r in range(rows):
+            for c in range(cols):
+                cy0 = by0 + round(r * (by1 - by0) / rows)
+                cy1 = by0 + round((r + 1) * (by1 - by0) / rows)
+                cx0 = bx0 + round(c * (bx1 - bx0) / cols)
+                cx1 = bx0 + round((c + 1) * (bx1 - bx0) / cols)
+                fill = sub[cy0:cy1, cx0:cx1].mean()
+                shape[r, c] = 1 if fill >= CELL_OCCUPANCY else 0
+        pieces.append(shape)
+    return pieces
+
+
 def save_debug_image(img: np.ndarray, config: dict, board: np.ndarray) -> str:
     """Save the capture with the detected state drawn on top."""
     os.makedirs(DEBUG_DIR, exist_ok=True)
@@ -91,3 +147,27 @@ def format_board(board: np.ndarray) -> str:
     return "\n".join(
         " ".join("#" if cell else "." for cell in row) for row in board
     )
+
+
+def format_pieces(pieces: list[np.ndarray | None]) -> str:
+    """Render the 3 tray pieces side by side."""
+    blocks = []
+    for i, piece in enumerate(pieces):
+        lines = [f"Parca {i + 1}:"]
+        if piece is None:
+            lines.append("(bos)")
+        else:
+            lines += [" ".join("#" if c else "." for c in row) for row in piece]
+        blocks.append(lines)
+
+    height = max(len(b) for b in blocks)
+    width = [max(len(line) for line in b) for b in blocks]
+    rows = []
+    for r in range(height):
+        rows.append(
+            "   ".join(
+                (b[r] if r < len(b) else "").ljust(width[i])
+                for i, b in enumerate(blocks)
+            ).rstrip()
+        )
+    return "\n".join(rows)

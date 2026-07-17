@@ -12,7 +12,13 @@ import sys
 
 from calibrate import calibrate, load_config
 from capture import WindowNotFound, grab_window
-from vision import format_board, read_board, save_debug_image
+from vision import (
+    format_board,
+    format_pieces,
+    read_board,
+    read_pieces,
+    save_debug_image,
+)
 
 
 def cmd_read() -> None:
@@ -29,8 +35,11 @@ def cmd_read() -> None:
         return
 
     board = read_board(img, config)
+    pieces = read_pieces(img, config)
     print("Okunan tahta (# = dolu, . = bos):\n")
     print(format_board(board))
+    print("\nOkunan parcalar:\n")
+    print(format_pieces(pieces))
     debug_path = save_debug_image(img, config, board)
     print(f"\nKontrol resmi kaydedildi: {debug_path}")
     print("Yesil kare = dolu okundu, kirmizi carpi = bos okundu.")

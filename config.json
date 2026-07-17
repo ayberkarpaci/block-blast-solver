@@ -1,0 +1,12 @@
+{
+  "window_title": "Block Blast",
+  "reference_size": [830, 1363],
+  "board_tl": [138, 289],
+  "board_br": [793, 942],
+  "tray_tl": [138, 1040],
+  "tray_br": [793, 1230],
+  "grid_size": 8,
+  "tray_cell_size": 36.8,
+  "fill_saturation_threshold": 70,
+  "fill_value_threshold": 140
+}
