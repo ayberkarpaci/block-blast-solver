@@ -178,14 +178,17 @@ def suggest_offset(config, board, expected, actual, shape, move) -> None:
     )
 
 
-def cmd_play(limit: int) -> None:
+def cmd_play(limit: int | None) -> None:
     try:
         config = load_config()
     except FileNotFoundError:
         print("config.json yok. Once calistir:  python main.py calibrate")
         return
 
-    print(f"Otomatik oynama: en fazla {limit} parca yerlestirilecek.")
+    if limit is None:
+        print("Otomatik oynama: oyun bitene veya durdurulana kadar.")
+    else:
+        print(f"Otomatik oynama: en fazla {limit} parca yerlestirilecek.")
     print("ACIL DURDURMA: mouse'u ekranin SOL UST kosesine carptir veya Ctrl+C.\n")
     set_topmost(config["window_title"], True)
     try:
@@ -194,11 +197,11 @@ def cmd_play(limit: int) -> None:
         set_topmost(config["window_title"], False)
 
 
-def play_loop(config: dict, limit: int) -> None:
+def play_loop(config: dict, limit: int | None) -> None:
     placed = 0
     idle_rounds = 0
     failed_drags = 0
-    while placed < limit:
+    while limit is None or placed < limit:
         try:
             img = grab_window(config["window_title"])
         except WindowNotFound as e:
@@ -209,8 +212,8 @@ def play_loop(config: dict, limit: int) -> None:
         # board captured mid-animation.
         board = read_board(img, config)
         pieces = read_pieces(img, config)
-        for _ in range(6):
-            time.sleep(0.3)
+        for _ in range(10):
+            time.sleep(0.15)
             img2 = grab_window(config["window_title"])
             board2 = read_board(img2, config)
             pieces2 = read_pieces(img2, config)
@@ -237,15 +240,18 @@ def play_loop(config: dict, limit: int) -> None:
             print("Yerlestirilebilecek hamle yok - oyun bitmis olabilir.")
             return
 
-        index, row, col = moves[0]
+        # After repeated failures on the same target, fall back to the
+        # next move in the plan (a different piece/position often works).
+        chosen = moves[min(failed_drags, len(moves) - 1)]
+        index, row, col = chosen
         print(f"{placed + 1}. hamle: parca {index + 1} -> satir {row + 1}, sutun {col + 1}")
         try:
-            execute_move(img, config, pieces, moves[0])
+            execute_move(img, config, pieces, chosen)
         except RuntimeError as e:
             print(f"  ! {e}")
             time.sleep(0.8)
             continue
-        time.sleep(1.3)
+        time.sleep(0.6)
 
         after = read_board(grab_window(config["window_title"]), config)
         expected = apply_move(board, pieces[index], row, col)
@@ -275,7 +281,7 @@ def main() -> None:
     elif command == "watch":
         cmd_watch()
     elif command == "play":
-        limit = int(sys.argv[2]) if len(sys.argv) > 2 else 1000
+        limit = int(sys.argv[2]) if len(sys.argv) > 2 else None
         cmd_play(limit)
     else:
         print(__doc__)

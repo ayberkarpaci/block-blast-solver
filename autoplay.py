@@ -109,7 +109,7 @@ def execute_move(
 
     cursor = grab
 
-    def move_cursor(cx: float, cy: float, duration: float = 0.25) -> tuple[float, float]:
+    def move_cursor(cx: float, cy: float, duration: float = 0.12) -> tuple[float, float]:
         cx = min(max(cx, 5), img.shape[1] - 5)
         cy = min(max(cy, 5), img.shape[0] - 5)
         sx, sy = win32gui.ClientToScreen(hwnd, (round(cx), round(cy)))
@@ -118,21 +118,35 @@ def execute_move(
 
     pyautogui.moveTo(*win32gui.ClientToScreen(hwnd, grab))
     pyautogui.mouseDown()
-    time.sleep(0.35)
+    time.sleep(0.2)
 
     try:
         gain = 1.3  # cursor movement is amplified roughly this much
-        for _ in range(8):
+        lift = 190.0  # the game holds the piece roughly this far above the cursor
+        # Head start: jump to where the target cursor position should
+        # be, so the measure loop only has to fine-tune.
+        est_piece = (grab[0], grab[1] - lift)
+        cursor = move_cursor(
+            cursor[0] + (target[0] - est_piece[0]) / gain,
+            cursor[1] + (target[1] - est_piece[1]) / gain,
+        )
+        time.sleep(0.15)
+
+        for step in range(8):
             pos = piece_position()
             if pos is None:
-                # Piece lost (drag cancelled?) - abort, caller will retry
+                print("    surukleme: parca ekranda bulunamadi (iptal olmus olabilir)")
                 return
             err_x = target[0] - pos[0]
             err_y = target[1] - pos[1]
+            print(
+                f"    surukleme[{step}]: parca ({pos[0]:.0f},{pos[1]:.0f}) "
+                f"hata ({err_x:+.0f},{err_y:+.0f}) imlec ({cursor[0]:.0f},{cursor[1]:.0f})"
+            )
             if abs(err_x) < cell_w / 3 and abs(err_y) < cell_h / 3:
                 break
             cursor = move_cursor(cursor[0] + err_x / gain, cursor[1] + err_y / gain)
-            time.sleep(0.3)
+            time.sleep(0.15)
     finally:
-        time.sleep(0.15)
+        time.sleep(0.1)
         pyautogui.mouseUp()
