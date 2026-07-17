@@ -11,13 +11,13 @@ from vision import DEBUG_DIR, scale_point
 MOVE_COLORS = [(0, 0, 255), (0, 140, 255), (255, 60, 0)]  # BGR: red, orange, blue
 
 
-def save_suggestion_image(
+def draw_suggestion(
     img: np.ndarray,
     config: dict,
     pieces: list[np.ndarray | None],
     moves: list[Move],
-) -> str:
-    os.makedirs(DEBUG_DIR, exist_ok=True)
+) -> np.ndarray:
+    """Return a copy of the capture with the moves drawn on it."""
     canvas = img.copy()
     n = config["grid_size"]
     x0, y0 = scale_point(config["board_tl"], config, img)
@@ -42,7 +42,17 @@ def save_suggestion_image(
         tx = round(x0 + (col + first[1] + 0.5) * cell_w) - 10
         ty = round(y0 + (row + first[0] + 0.5) * cell_h) + 10
         cv2.putText(canvas, str(step + 1), (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 1.1, color, 3)
+    return canvas
 
+
+def save_suggestion_image(
+    img: np.ndarray,
+    config: dict,
+    pieces: list[np.ndarray | None],
+    moves: list[Move],
+) -> str:
+    os.makedirs(DEBUG_DIR, exist_ok=True)
+    canvas = draw_suggestion(img, config, pieces, moves)
     path = os.path.join(DEBUG_DIR, "suggestion.png")
     cv2.imwrite(path, canvas)
     return path
