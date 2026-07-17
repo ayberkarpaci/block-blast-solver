@@ -20,7 +20,7 @@ import win32gui
 
 from capture import find_window, grab_window
 from solver import Move
-from vision import piece_grab_points, scale_point, vivid_mask
+from vision import piece_grab_points, scale_point
 
 pyautogui.PAUSE = 0.02
 pyautogui.FAILSAFE = True
@@ -52,20 +52,26 @@ GAME_OVER_BUTTON = [465, 1030]
 def restart_if_game_over(config: dict) -> bool:
     """Click the play button if an end-of-round screen is showing.
 
-    The button color varies by screen (green on "Game Over", orange on
-    the celebration screen), so only saturation/brightness are checked:
-    during normal play that spot is plain background.
+    Button colors vary by screen (green, orange, ...) and some themes
+    have vivid backgrounds, so the check is contrast-based: a button at
+    that spot differs strongly from the background to its left and
+    right, while during play the whole strip is uniform background.
     """
     img = grab_window(config["window_title"])
     x, y = scale_point(GAME_OVER_BUTTON, config, img)
-    # Wide strip across the button; use upper-quartile saturation so
-    # the pale play-triangle in the middle cannot mask the colored
-    # button body.
-    patch = img[y - 20 : y + 20, max(0, x - 150) : x + 150]
-    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
-    sat_hi = float(np.percentile(hsv[:, :, 1], 75))
-    val_hi = float(np.percentile(hsv[:, :, 2], 75))
-    if not (sat_hi > 120 and val_hi > 150):
+
+    def region_color(cx: int) -> np.ndarray:
+        patch = img[y - 18 : y + 18, max(0, cx - 40) : cx + 40]
+        return patch.reshape(-1, 3).mean(axis=0)
+
+    side_offset = round(300 * img.shape[1] / config["reference_size"][0])
+    center = region_color(x)
+    left = region_color(x - side_offset)
+    right = region_color(min(img.shape[1] - 1, x + side_offset))
+    if (
+        np.abs(center - left).sum() < 120
+        or np.abs(center - right).sum() < 120
+    ):
         return False
     hwnd = focus_window(config["window_title"])
     pyautogui.click(*win32gui.ClientToScreen(hwnd, (x, y)))
@@ -123,7 +129,7 @@ def execute_move(
         y0 + (row + centroid_r + 0.5) * cell_h,
     )
 
-    base_mask = vivid_mask(img, config)
+    tray_top = scale_point(config["tray_tl"], config, img)[1]
 
     # Template of the floating piece at board scale. Position is found
     # by pattern matching instead of a centroid: when the piece passes
@@ -144,8 +150,15 @@ def execute_move(
     min_score = 0.3 * float(tmpl_small.sum())
 
     def piece_position() -> tuple[float, float] | None:
+        # Frame differencing against the pre-drag capture: the moving
+        # piece is whatever changed, regardless of theme colors.
         snap = grab_window(config["window_title"])
-        diff = (vivid_mask(snap, config) & ~base_mask).astype(np.float32)
+        diff = (
+            np.abs(snap.astype(np.int32) - img.astype(np.int32)).sum(axis=2) > 120
+        ).astype(np.float32)
+        # The vacated tray slot also differs from the base capture and
+        # has the piece's exact shape; keep the tray out of the search.
+        diff[tray_top:, :] = 0.0
         small = cv2.resize(diff, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
         # Pad so a piece partly outside the window can still match.
         pad_y, pad_x = tmpl_small.shape

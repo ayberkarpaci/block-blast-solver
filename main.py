@@ -217,6 +217,7 @@ def play_loop(config: dict, limit: int | None) -> None:
     failed_drags = 0
     streak = 0  # live combo count, carried into the solver
     last_failed_piece: int | None = None
+    restarts_without_progress = 0
     while limit is None or placed < limit:
         try:
             img = grab_window(config["window_title"])
@@ -245,6 +246,10 @@ def play_loop(config: dict, limit: int | None) -> None:
         if all(p is None for p in pieces):
             idle_rounds += 1
             if idle_rounds >= 3 and restart_if_game_over(config):
+                restarts_without_progress += 1
+                if restarts_without_progress > 3:
+                    print("Restart tiklamalari ise yaramiyor; duruyorum (reklam/bilinmeyen ekran?).")
+                    return
                 print("Oyun bitmisti - yeni oyun basladi.")
                 idle_rounds = 0
                 time.sleep(2.0)
@@ -270,6 +275,10 @@ def play_loop(config: dict, limit: int | None) -> None:
             # Board is jammed; the game-over screen should appear shortly.
             failed_drags += 1
             if restart_if_game_over(config):
+                restarts_without_progress += 1
+                if restarts_without_progress > 3:
+                    print("Restart tiklamalari ise yaramiyor; duruyorum (reklam/bilinmeyen ekran?).")
+                    return
                 print("Oyun bitti - yeni oyun basladi.")
                 failed_drags = 0
                 time.sleep(2.0)
@@ -304,6 +313,7 @@ def play_loop(config: dict, limit: int | None) -> None:
             continue
         failed_drags = 0
         last_failed_piece = None
+        restarts_without_progress = 0
         # Did this placement clear lines? (cells after < cells before + piece)
         cleared = int(board.sum()) + int(pieces[index].sum()) > int(after.sum())
         streak = streak + 1 if cleared else 0

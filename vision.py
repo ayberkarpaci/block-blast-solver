@@ -80,6 +80,24 @@ def vivid_mask(img: np.ndarray, config: dict) -> np.ndarray:
     )
 
 
+def tray_background_color(img: np.ndarray, config: dict) -> np.ndarray:
+    """Mean color of the strip just above the tray (always background)."""
+    x0, y0 = scale_point(config["tray_tl"], config, img)
+    x1, _ = scale_point(config["tray_br"], config, img)
+    strip = img[max(0, y0 - 25) : max(1, y0 - 8), x0 + 50 : x1 - 50]
+    return strip.reshape(-1, 3).mean(axis=0)
+
+
+def tray_piece_mask(img: np.ndarray, config: dict) -> np.ndarray:
+    """Piece pixels = far from the tray background color.
+
+    Vividness is not usable here: some themes (e.g. the orange wood
+    event mode) have a background more vivid than the pieces.
+    """
+    bg = tray_background_color(img, config)
+    return np.abs(img.astype(np.int32) - bg.astype(np.int32)).sum(axis=2) > 150
+
+
 def read_pieces(img: np.ndarray, config: dict) -> list[np.ndarray | None]:
     """Read the 3 tray slots into shape matrices (None = empty slot).
 
@@ -88,7 +106,7 @@ def read_pieces(img: np.ndarray, config: dict) -> list[np.ndarray | None]:
          [1, 0],
          [1, 1]]
     """
-    mask = vivid_mask(img, config)
+    mask = tray_piece_mask(img, config)
     x0, y0 = scale_point(config["tray_tl"], config, img)
     x1, y1 = scale_point(config["tray_br"], config, img)
     cell = config["tray_cell_size"] * img.shape[1] / config["reference_size"][0]
@@ -128,7 +146,7 @@ def piece_grab_points(img: np.ndarray, config: dict) -> list[tuple[int, int] | N
 
     This is where the mouse should grab the piece when auto-playing.
     """
-    mask = vivid_mask(img, config)
+    mask = tray_piece_mask(img, config)
     x0, y0 = scale_point(config["tray_tl"], config, img)
     x1, y1 = scale_point(config["tray_br"], config, img)
     slot_w = (x1 - x0) / 3
