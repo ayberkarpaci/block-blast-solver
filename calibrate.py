@@ -1,23 +1,25 @@
-"""Interactive calibration.
+"""Interactive calibration (manual fallback).
 
-Takes a full-screen screenshot and lets the user click, in order:
+Normally config.json ships pre-measured coordinates and scales
+automatically with the window size, so you rarely need this. Run it if
+the game UI layout itself changes (e.g. after a game update).
 
-  1. top-left corner of the 8x8 board
+Shows a capture of the game window; click, in order:
+
+  1. top-left corner of the 8x8 board (inner playable area)
   2. bottom-right corner of the 8x8 board
   3. top-left corner of the piece tray (area holding the 3 pieces)
   4. bottom-right corner of the piece tray
-
-The four points are saved to config.json. Run again any time the game
-window moves or is resized.
 """
 
 import json
 
 import cv2
 
-from capture import grab_screen
+from capture import grab_window
 
 CONFIG_PATH = "config.json"
+DEFAULT_WINDOW_TITLE = "Block Blast"
 
 STEPS = [
     ("board_tl", "Tahtanin SOL UST kosesine tikla"),
@@ -26,17 +28,22 @@ STEPS = [
     ("tray_br", "Parca alaninin SAG ALT kosesine tikla"),
 ]
 
-# Display is scaled down to fit on screen; clicks are mapped back to
-# real screenshot pixels using this factor.
-MAX_DISPLAY_WIDTH = 1400
+MAX_DISPLAY_HEIGHT = 1000
+
+
+def load_config() -> dict:
+    with open(CONFIG_PATH, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def calibrate() -> None:
-    print("3 saniye icinde oyun penceresinin acik ve gorunur oldugundan emin ol...")
-    cv2.waitKey(3000)
-    img = grab_screen()
+    try:
+        window_title = load_config().get("window_title", DEFAULT_WINDOW_TITLE)
+    except FileNotFoundError:
+        window_title = DEFAULT_WINDOW_TITLE
 
-    scale = min(1.0, MAX_DISPLAY_WIDTH / img.shape[1])
+    img = grab_window(window_title)
+    scale = min(1.0, MAX_DISPLAY_HEIGHT / img.shape[0])
     display_base = cv2.resize(img, None, fx=scale, fy=scale)
 
     points: dict[str, list[int]] = {}
@@ -49,7 +56,7 @@ def calibrate() -> None:
             cv2.drawMarker(
                 canvas,
                 (int(x * scale), int(y * scale)),
-                (0, 255, 0),
+                (0, 0, 255),
                 cv2.MARKER_CROSS,
                 20,
                 2,
@@ -59,10 +66,10 @@ def calibrate() -> None:
             cv2.putText(
                 canvas,
                 f"{state['step'] + 1}/4: {label}",
-                (20, 40),
+                (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                1.0,
-                (0, 255, 255),
+                0.7,
+                (0, 0, 255),
                 2,
             )
         cv2.imshow("Kalibrasyon", canvas)
@@ -90,22 +97,20 @@ def calibrate() -> None:
     cv2.destroyAllWindows()
 
     config = {
+        "window_title": window_title,
+        "reference_size": [img.shape[1], img.shape[0]],
         "board_tl": points["board_tl"],
         "board_br": points["board_br"],
         "tray_tl": points["tray_tl"],
         "tray_br": points["tray_br"],
         "grid_size": 8,
+        "fill_saturation_threshold": 70,
         "fill_value_threshold": 140,
     }
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
     print(f"Kaydedildi: {CONFIG_PATH}")
     print("Simdi test et:  python main.py read")
-
-
-def load_config() -> dict:
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
 
 
 if __name__ == "__main__":

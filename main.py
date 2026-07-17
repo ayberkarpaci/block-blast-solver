@@ -1,16 +1,17 @@
 """Block Blast solver - entry point.
 
 Usage:
-  python main.py calibrate   # click the board / tray corners once
   python main.py read        # read the current board and save a debug image
+  python main.py calibrate   # re-measure corners by clicking (rarely needed)
 
-Solver and overlay steps come later; get `read` working reliably first.
+The game window can be behind other windows; it just has to be open
+(not minimized).
 """
 
 import sys
 
 from calibrate import calibrate, load_config
-from capture import grab_screen
+from capture import WindowNotFound, grab_window
 from vision import format_board, read_board, save_debug_image
 
 
@@ -21,7 +22,12 @@ def cmd_read() -> None:
         print("config.json yok. Once calistir:  python main.py calibrate")
         return
 
-    img = grab_screen()
+    try:
+        img = grab_window(config["window_title"])
+    except WindowNotFound as e:
+        print(e)
+        return
+
     board = read_board(img, config)
     print("Okunan tahta (# = dolu, . = bos):\n")
     print(format_board(board))
