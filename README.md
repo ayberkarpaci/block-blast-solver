@@ -19,7 +19,20 @@ py -m venv .venv
 With the game window open:
 
 ```
-.venv\Scripts\python main.py solve
+.venv\Scripts\python main.py play      # plays by itself until stopped
+.venv\Scripts\python main.py play 5    # place at most 5 pieces
+```
+
+Auto-play makes the game window topmost (clicks go to whichever
+window is on top), grabs a piece, and steers it onto the target cells
+with a measure-and-nudge loop before releasing. Emergency stop: slam
+the mouse into the top-left screen corner, or Ctrl+C in the terminal.
+
+For suggestions only:
+
+```
+.venv\Scripts\python main.py watch     # live suggestion window
+.venv\Scripts\python main.py solve     # one-shot suggestion
 ```
 
 Prints the board, the 3 tray pieces, and the suggested placement order,
@@ -48,3 +61,8 @@ Other commands:
   hole, -20 when no empty 3x3 area remains, small penalty per filled
   cell.
 - `overlay.py` — draws the chosen placements onto the capture.
+- `autoplay.py` — drags pieces with the real mouse. The game lifts
+  the floating piece well above the cursor, amplifies cursor movement,
+  and snaps to the grid near the board, so the drag is a closed loop:
+  measure where the piece is drawn, nudge the cursor by the remaining
+  error, release when it sits on the target cells.
