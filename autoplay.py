@@ -204,20 +204,35 @@ def execute_move(
         )
         time.sleep(0.15)
 
-        for step in range(8):
+        # The game's cursor-to-piece mapping is nonlinear (movement is
+        # amplified more near the top of the board), so the gain is
+        # re-estimated each step from how far the piece actually moved.
+        gain_x, gain_y = gain, gain
+        prev_pos: tuple[float, float] | None = None
+        prev_cursor = cursor
+        for step in range(10):
             pos = piece_position((cursor[0], cursor[1] - lift * 0.7))
             if pos is None:
                 print("    surukleme: parca ekranda bulunamadi (iptal olmus olabilir)")
                 return
+            if prev_pos is not None:
+                dcx = cursor[0] - prev_cursor[0]
+                dcy = cursor[1] - prev_cursor[1]
+                if abs(dcx) > 4:
+                    gain_x = min(6.0, max(0.8, abs(pos[0] - prev_pos[0]) / abs(dcx)))
+                if abs(dcy) > 4:
+                    gain_y = min(6.0, max(0.8, abs(pos[1] - prev_pos[1]) / abs(dcy)))
             err_x = target[0] - pos[0]
             err_y = target[1] - pos[1]
             print(
                 f"    surukleme[{step}]: parca ({pos[0]:.0f},{pos[1]:.0f}) "
-                f"hata ({err_x:+.0f},{err_y:+.0f}) imlec ({cursor[0]:.0f},{cursor[1]:.0f})"
+                f"hata ({err_x:+.0f},{err_y:+.0f}) imlec ({cursor[0]:.0f},{cursor[1]:.0f}) "
+                f"kazanc ({gain_x:.1f},{gain_y:.1f})"
             )
             if abs(err_x) < cell_w / 3 and abs(err_y) < cell_h / 3:
                 break
-            cursor = move_cursor(cursor[0] + err_x / gain, cursor[1] + err_y / gain)
+            prev_pos, prev_cursor = pos, cursor
+            cursor = move_cursor(cursor[0] + err_x / gain_x, cursor[1] + err_y / gain_y)
             time.sleep(0.15)
     finally:
         time.sleep(0.1)
