@@ -204,6 +204,7 @@ def play_loop(config: dict, limit: int | None) -> None:
     placed = 0
     idle_rounds = 0
     failed_drags = 0
+    last_failed_piece: int | None = None
     while limit is None or placed < limit:
         try:
             img = grab_window(config["window_title"])
@@ -243,7 +244,16 @@ def play_loop(config: dict, limit: int | None) -> None:
             continue
         idle_rounds = 0
 
-        moves, score = solve(board, pieces)
+        # After a failed drag, try a fresh plan that starts with a
+        # different piece. (Never fall back to a later move of the same
+        # plan - those assume the earlier moves were already played.)
+        solve_input = list(pieces)
+        excluded = last_failed_piece is not None and sum(p is not None for p in pieces) > 1
+        if excluded:
+            solve_input[last_failed_piece] = None
+        moves, score = solve(board, solve_input)
+        if not moves and excluded:
+            moves, score = solve(board, pieces)
         if not moves:
             # Board is jammed; the game-over screen should appear shortly.
             failed_drags += 1
@@ -258,9 +268,7 @@ def play_loop(config: dict, limit: int | None) -> None:
             time.sleep(1.5)
             continue
 
-        # After repeated failures on the same target, fall back to the
-        # next move in the plan (a different piece/position often works).
-        chosen = moves[min(failed_drags, len(moves) - 1)]
+        chosen = moves[0]
         index, row, col = chosen
         print(f"{placed + 1}. hamle: parca {index + 1} -> satir {row + 1}, sutun {col + 1}")
         try:
@@ -275,13 +283,15 @@ def play_loop(config: dict, limit: int | None) -> None:
         expected = apply_move(board, pieces[index], row, col)
         if (after == board).all():
             failed_drags += 1
-            if failed_drags >= 3:
-                print("  ! Surukleme 3 kez ise yaramadi, duruyorum.")
+            last_failed_piece = index
+            if failed_drags >= 5:
+                print("  ! Surukleme 5 kez ise yaramadi, duruyorum.")
                 return
-            print("  ! Parca yerlesmemis gorunuyor, tekrar deneyecegim.")
+            print("  ! Parca yerlesmemis gorunuyor, baska planla deneyecegim.")
             time.sleep(0.8)
             continue
         failed_drags = 0
+        last_failed_piece = None
         if not (after == expected).all():
             suggest_offset(config, board, expected, after, pieces[index], moves[0])
         placed += 1
