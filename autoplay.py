@@ -149,9 +149,13 @@ def execute_move(
     tmpl_centroid = ((centroid_c + 0.5) * cell_w, (centroid_r + 0.5) * cell_h)
     min_score = 0.3 * float(tmpl_small.sum())
 
-    def piece_position() -> tuple[float, float] | None:
+    SEARCH_MARGIN = 350  # the held piece is always this close to the cursor
+
+    def piece_position(hint: tuple[float, float]) -> tuple[float, float] | None:
         # Frame differencing against the pre-drag capture: the moving
-        # piece is whatever changed, regardless of theme colors.
+        # piece is whatever changed, regardless of theme colors. The
+        # search stays near `hint` (around the cursor) so clear
+        # animations and score popups elsewhere cannot hijack the match.
         snap = grab_window(config["window_title"])
         diff = (
             np.abs(snap.astype(np.int32) - img.astype(np.int32)).sum(axis=2) > 120
@@ -159,7 +163,10 @@ def execute_move(
         # The vacated tray slot also differs from the base capture and
         # has the piece's exact shape; keep the tray out of the search.
         diff[tray_top:, :] = 0.0
-        small = cv2.resize(diff, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
+        wx0 = max(0, round(hint[0]) - SEARCH_MARGIN)
+        wy0 = max(0, round(hint[1]) - SEARCH_MARGIN)
+        window = diff[wy0 : round(hint[1]) + SEARCH_MARGIN, wx0 : round(hint[0]) + SEARCH_MARGIN]
+        small = cv2.resize(window, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
         # Pad so a piece partly outside the window can still match.
         pad_y, pad_x = tmpl_small.shape
         small = cv2.copyMakeBorder(small, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_CONSTANT, value=0.0)
@@ -168,8 +175,8 @@ def execute_move(
         if max_val < min_score:
             return None
         return (
-            (max_loc[0] - pad_x) / SCALE + tmpl_centroid[0],
-            (max_loc[1] - pad_y) / SCALE + tmpl_centroid[1],
+            wx0 + (max_loc[0] - pad_x) / SCALE + tmpl_centroid[0],
+            wy0 + (max_loc[1] - pad_y) / SCALE + tmpl_centroid[1],
         )
 
     cursor = grab
@@ -198,7 +205,7 @@ def execute_move(
         time.sleep(0.15)
 
         for step in range(8):
-            pos = piece_position()
+            pos = piece_position((cursor[0], cursor[1] - lift * 0.7))
             if pos is None:
                 print("    surukleme: parca ekranda bulunamadi (iptal olmus olabilir)")
                 return
