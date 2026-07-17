@@ -50,15 +50,22 @@ GAME_OVER_BUTTON = [465, 1030]
 
 
 def restart_if_game_over(config: dict) -> bool:
-    """Click the play button if the game-over screen is showing."""
+    """Click the play button if an end-of-round screen is showing.
+
+    The button color varies by screen (green on "Game Over", orange on
+    the celebration screen), so only saturation/brightness are checked:
+    during normal play that spot is plain background.
+    """
     img = grab_window(config["window_title"])
     x, y = scale_point(GAME_OVER_BUTTON, config, img)
-    patch = img[y - 15 : y + 15, x - 40 : x + 40]
+    # Wide strip across the button; use upper-quartile saturation so
+    # the pale play-triangle in the middle cannot mask the colored
+    # button body.
+    patch = img[y - 20 : y + 20, max(0, x - 150) : x + 150]
     hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
-    hue = hsv[:, :, 0].mean()
-    sat = hsv[:, :, 1].mean()
-    val = hsv[:, :, 2].mean()
-    if not (35 <= hue <= 85 and sat > 110 and val > 110):
+    sat_hi = float(np.percentile(hsv[:, :, 1], 75))
+    val_hi = float(np.percentile(hsv[:, :, 2], 75))
+    if not (sat_hi > 120 and val_hi > 150):
         return False
     hwnd = focus_window(config["window_title"])
     pyautogui.click(*win32gui.ClientToScreen(hwnd, (x, y)))
