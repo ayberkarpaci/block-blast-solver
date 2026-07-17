@@ -21,7 +21,7 @@ import cv2
 
 sys.stdout.reconfigure(line_buffering=True)
 
-from autoplay import execute_move, set_topmost
+from autoplay import execute_move, restart_if_game_over, set_topmost
 from calibrate import calibrate, load_config
 from capture import WindowNotFound, grab_window
 from overlay import draw_suggestion, save_suggestion_image
@@ -190,6 +190,9 @@ def cmd_play(limit: int | None) -> None:
     else:
         print(f"Otomatik oynama: en fazla {limit} parca yerlestirilecek.")
     print("ACIL DURDURMA: mouse'u ekranin SOL UST kosesine carptir veya Ctrl+C.\n")
+    from autoplay import focus_window
+
+    focus_window(config["window_title"])  # restores the window if minimized
     set_topmost(config["window_title"], True)
     try:
         play_loop(config, limit)
@@ -228,8 +231,13 @@ def play_loop(config: dict, limit: int | None) -> None:
 
         if all(p is None for p in pieces):
             idle_rounds += 1
-            if idle_rounds > 5:
-                print("Tepside parca gorunmuyor; duruyorum (oyun bitti / menu acik?).")
+            if idle_rounds >= 3 and restart_if_game_over(config):
+                print("Oyun bitmisti - yeni oyun basladi.")
+                idle_rounds = 0
+                time.sleep(2.0)
+                continue
+            if idle_rounds > 8:
+                print("Tepside parca gorunmuyor; duruyorum (menu/reklam acik olabilir).")
                 return
             time.sleep(1.0)
             continue
@@ -237,8 +245,18 @@ def play_loop(config: dict, limit: int | None) -> None:
 
         moves, score = solve(board, pieces)
         if not moves:
-            print("Yerlestirilebilecek hamle yok - oyun bitmis olabilir.")
-            return
+            # Board is jammed; the game-over screen should appear shortly.
+            failed_drags += 1
+            if restart_if_game_over(config):
+                print("Oyun bitti - yeni oyun basladi.")
+                failed_drags = 0
+                time.sleep(2.0)
+                continue
+            if failed_drags > 6:
+                print("Yerlestirilebilecek hamle yok ve oyun-bitti ekrani gorunmedi; duruyorum.")
+                return
+            time.sleep(1.5)
+            continue
 
         # After repeated failures on the same target, fall back to the
         # next move in the plan (a different piece/position often works).

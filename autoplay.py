@@ -12,6 +12,7 @@ top-left screen corner to abort immediately.
 
 import time
 
+import cv2
 import numpy as np
 import pyautogui
 import win32con
@@ -41,6 +42,27 @@ def set_topmost(title_part: str, on: bool) -> None:
         0, 0, 0, 0,
         win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE,
     )
+
+
+# Client position (reference-size coords) of the green play button on
+# the game-over screen.
+GAME_OVER_BUTTON = [465, 1030]
+
+
+def restart_if_game_over(config: dict) -> bool:
+    """Click the play button if the game-over screen is showing."""
+    img = grab_window(config["window_title"])
+    x, y = scale_point(GAME_OVER_BUTTON, config, img)
+    patch = img[y - 15 : y + 15, x - 40 : x + 40]
+    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+    hue = hsv[:, :, 0].mean()
+    sat = hsv[:, :, 1].mean()
+    val = hsv[:, :, 2].mean()
+    if not (35 <= hue <= 85 and sat > 110 and val > 110):
+        return False
+    hwnd = focus_window(config["window_title"])
+    pyautogui.click(*win32gui.ClientToScreen(hwnd, (x, y)))
+    return True
 
 
 def focus_window(title_part: str) -> int:
@@ -95,17 +117,40 @@ def execute_move(
     )
 
     base_mask = vivid_mask(img, config)
-    # The floating piece is drawn at board scale; require most of it to
-    # be visible before trusting a measurement.
-    min_pixels = 0.4 * shape.sum() * cell_w * cell_h
+
+    # Template of the floating piece at board scale. Position is found
+    # by pattern matching instead of a centroid: when the piece passes
+    # over already-filled cells those pixels vanish from the diff mask
+    # and a centroid drifts badly, but the pattern still lines up on
+    # the visible parts.
+    SCALE = 0.25
+    tmpl = np.zeros((round(shape.shape[0] * cell_h), round(shape.shape[1] * cell_w)), np.float32)
+    for r, c in cells:
+        tmpl[
+            round(r * cell_h) + 4 : round((r + 1) * cell_h) - 4,
+            round(c * cell_w) + 4 : round((c + 1) * cell_w) - 4,
+        ] = 1.0
+    tmpl_small = cv2.resize(tmpl, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
+    # Centroid of the template, to convert a match location into the
+    # same "piece center of mass" space as `target`.
+    tmpl_centroid = ((centroid_c + 0.5) * cell_w, (centroid_r + 0.5) * cell_h)
+    min_score = 0.3 * float(tmpl_small.sum())
 
     def piece_position() -> tuple[float, float] | None:
         snap = grab_window(config["window_title"])
-        diff = vivid_mask(snap, config) & ~base_mask
-        ys, xs = np.nonzero(diff)
-        if len(xs) < min_pixels:
+        diff = (vivid_mask(snap, config) & ~base_mask).astype(np.float32)
+        small = cv2.resize(diff, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
+        # Pad so a piece partly outside the window can still match.
+        pad_y, pad_x = tmpl_small.shape
+        small = cv2.copyMakeBorder(small, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_CONSTANT, value=0.0)
+        res = cv2.matchTemplate(small, tmpl_small, cv2.TM_CCORR)
+        _, max_val, _, max_loc = cv2.minMaxLoc(res)
+        if max_val < min_score:
             return None
-        return (float(xs.mean()), float(ys.mean()))
+        return (
+            (max_loc[0] - pad_x) / SCALE + tmpl_centroid[0],
+            (max_loc[1] - pad_y) / SCALE + tmpl_centroid[1],
+        )
 
     cursor = grab
 
