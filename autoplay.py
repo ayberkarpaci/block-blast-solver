@@ -171,13 +171,17 @@ def execute_move(
         pad_y, pad_x = tmpl_small.shape
         small = cv2.copyMakeBorder(small, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_CONSTANT, value=0.0)
         res = cv2.matchTemplate(small, tmpl_small, cv2.TM_CCORR)
-        _, max_val, _, max_loc = cv2.minMaxLoc(res)
+        _, max_val, _, _ = cv2.minMaxLoc(res)
         if max_val < min_score:
             return None
-        return (
-            wx0 + (max_loc[0] - pad_x) / SCALE + tmpl_centroid[0],
-            wy0 + (max_loc[1] - pad_y) / SCALE + tmpl_centroid[1],
-        )
+        # Self-similar shapes (e.g. a 1x5 bar) match almost equally at
+        # cell-shifted offsets; among all strong peaks take the one
+        # closest to the expected position instead of the global max.
+        ys, xs = np.nonzero(res >= 0.8 * max_val)
+        px = wx0 + (xs - pad_x) / SCALE + tmpl_centroid[0]
+        py = wy0 + (ys - pad_y) / SCALE + tmpl_centroid[1]
+        nearest = np.argmin((px - hint[0]) ** 2 + (py - hint[1]) ** 2)
+        return (float(px[nearest]), float(py[nearest]))
 
     cursor = grab
 
@@ -210,6 +214,8 @@ def execute_move(
         gain_x, gain_y = gain, gain
         prev_pos: tuple[float, float] | None = None
         prev_cursor = cursor
+        best_err = float("inf")
+        best_cursor = cursor
         for step in range(10):
             pos = piece_position((cursor[0], cursor[1] - lift * 0.7))
             if pos is None:
@@ -229,11 +235,22 @@ def execute_move(
                 f"hata ({err_x:+.0f},{err_y:+.0f}) imlec ({cursor[0]:.0f},{cursor[1]:.0f}) "
                 f"kazanc ({gain_x:.1f},{gain_y:.1f})"
             )
+            err = abs(err_x) + abs(err_y)
+            if err < best_err:
+                best_err = err
+                best_cursor = cursor
             if abs(err_x) < cell_w / 3 and abs(err_y) < cell_h / 3:
                 break
             prev_pos, prev_cursor = pos, cursor
             cursor = move_cursor(cursor[0] + err_x / gain_x, cursor[1] + err_y / gain_y)
             time.sleep(0.15)
+        else:
+            # Never converged (snap fights or a self-similar shape):
+            # release at the best position seen - the game's own grid
+            # snap often lands it, and the caller verifies anyway.
+            print(f"    yakinsamadi; en iyi gorulen konumda birakiyorum (hata {best_err:.0f})")
+            move_cursor(*best_cursor)
+            time.sleep(0.2)
     finally:
         time.sleep(0.1)
         pyautogui.mouseUp()
