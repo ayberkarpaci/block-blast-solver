@@ -38,6 +38,11 @@ def find_window(title_part: str) -> int:
 def grab_window(title_part: str) -> np.ndarray:
     """Grab the client area of the window as a BGR image."""
     hwnd = find_window(title_part)
+    if win32gui.IsIconic(hwnd):
+        raise WindowNotFound(
+            "Oyun penceresi simge durumuna kucultulmus. Pencereyi ac "
+            "(arkada kalabilir, kucultulmus olmasin yeter)."
+        )
     left, top, right, bottom = win32gui.GetClientRect(hwnd)
     width, height = right - left, bottom - top
 
