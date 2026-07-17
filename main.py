@@ -205,8 +205,24 @@ def play_loop(config: dict, limit: int) -> None:
             print(e)
             return
 
+        # Wait until two consecutive reads agree so we never act on a
+        # board captured mid-animation.
         board = read_board(img, config)
         pieces = read_pieces(img, config)
+        for _ in range(6):
+            time.sleep(0.3)
+            img2 = grab_window(config["window_title"])
+            board2 = read_board(img2, config)
+            pieces2 = read_pieces(img2, config)
+            same_pieces = len(pieces) == len(pieces2) and all(
+                (a is None and b is None)
+                or (a is not None and b is not None and a.shape == b.shape and (a == b).all())
+                for a, b in zip(pieces, pieces2)
+            )
+            if (board == board2).all() and same_pieces:
+                break
+            img, board, pieces = img2, board2, pieces2
+
         if all(p is None for p in pieces):
             idle_rounds += 1
             if idle_rounds > 5:
@@ -223,7 +239,12 @@ def play_loop(config: dict, limit: int) -> None:
 
         index, row, col = moves[0]
         print(f"{placed + 1}. hamle: parca {index + 1} -> satir {row + 1}, sutun {col + 1}")
-        execute_move(img, config, pieces, moves[0])
+        try:
+            execute_move(img, config, pieces, moves[0])
+        except RuntimeError as e:
+            print(f"  ! {e}")
+            time.sleep(0.8)
+            continue
         time.sleep(1.3)
 
         after = read_board(grab_window(config["window_title"]), config)

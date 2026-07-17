@@ -117,7 +117,9 @@ def read_pieces(img: np.ndarray, config: dict) -> list[np.ndarray | None]:
                 cx1 = bx0 + round((c + 1) * (bx1 - bx0) / cols)
                 fill = sub[cy0:cy1, cx0:cx1].mean()
                 shape[r, c] = 1 if fill >= CELL_OCCUPANCY else 0
-        pieces.append(shape)
+        # Mid-animation reads can produce a phantom all-empty shape;
+        # treat that as an empty slot rather than a piece.
+        pieces.append(shape if shape.any() else None)
     return pieces
 
 

@@ -119,7 +119,7 @@ def solve(board: np.ndarray, pieces: list[np.ndarray | None]) -> tuple[list[Move
     Returns (moves, score). Prefers sequences that place more pieces;
     among equals, the highest-scoring one.
     """
-    available = [(i, p) for i, p in enumerate(pieces) if p is not None]
+    available = [(i, p) for i, p in enumerate(pieces) if p is not None and p.any()]
     placements = {i: piece_placements(p) for i, p in available}
     start = board_to_bits(board)
 

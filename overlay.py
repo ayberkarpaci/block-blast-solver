@@ -28,6 +28,8 @@ def draw_suggestion(
     for step, (index, row, col) in enumerate(moves):
         color = MOVE_COLORS[step % len(MOVE_COLORS)]
         shape = pieces[index]
+        if shape is None or not shape.any():
+            continue
         for r in range(shape.shape[0]):
             for c in range(shape.shape[1]):
                 if not shape[r, c]:
