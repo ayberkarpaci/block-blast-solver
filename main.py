@@ -190,12 +190,23 @@ def cmd_play(limit: int | None) -> None:
     else:
         print(f"Otomatik oynama: en fazla {limit} parca yerlestirilecek.")
     print("ACIL DURDURMA: mouse'u ekranin SOL UST kosesine carptir veya Ctrl+C.\n")
+    import win32api
+    from pyautogui import FailSafeException
+
     from autoplay import focus_window
+
+    # If the last run was stopped by slamming the mouse into the
+    # top-left corner, the cursor is still parked there and would
+    # instantly re-trigger the failsafe.
+    if win32api.GetCursorPos() <= (10, 10):
+        win32api.SetCursorPos((400, 400))
 
     focus_window(config["window_title"])  # restores the window if minimized
     set_topmost(config["window_title"], True)
     try:
         play_loop(config, limit)
+    except FailSafeException:
+        print("\nACIL FREN: mouse kosede algilandi, durduruldu.")
     finally:
         set_topmost(config["window_title"], False)
 
@@ -204,6 +215,7 @@ def play_loop(config: dict, limit: int | None) -> None:
     placed = 0
     idle_rounds = 0
     failed_drags = 0
+    streak = 0  # live combo count, carried into the solver
     last_failed_piece: int | None = None
     while limit is None or placed < limit:
         try:
@@ -251,9 +263,9 @@ def play_loop(config: dict, limit: int | None) -> None:
         excluded = last_failed_piece is not None and sum(p is not None for p in pieces) > 1
         if excluded:
             solve_input[last_failed_piece] = None
-        moves, score = solve(board, solve_input)
+        moves, score = solve(board, solve_input, streak)
         if not moves and excluded:
-            moves, score = solve(board, pieces)
+            moves, score = solve(board, pieces, streak)
         if not moves:
             # Board is jammed; the game-over screen should appear shortly.
             failed_drags += 1
@@ -292,6 +304,11 @@ def play_loop(config: dict, limit: int | None) -> None:
             continue
         failed_drags = 0
         last_failed_piece = None
+        # Did this placement clear lines? (cells after < cells before + piece)
+        cleared = int(board.sum()) + int(pieces[index].sum()) > int(after.sum())
+        streak = streak + 1 if cleared else 0
+        if cleared:
+            print(f"    patlatma! combo zinciri: {streak}")
         if not (after == expected).all():
             suggest_offset(config, board, expected, after, pieces[index], moves[0])
         placed += 1

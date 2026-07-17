@@ -22,7 +22,7 @@ NOT_2_RIGHT_COLS = FULL & ~COL_MASKS[6] & ~COL_MASKS[7]
 # Heuristic weights
 LINE_SCORE = 10
 MULTI_CLEAR_BONUS = 15  # per extra line cleared in the same move
-COMBO_BONUS = 25  # per consecutive clearing placement (combo streak)
+COMBO_BONUS = 60  # per consecutive clearing placement (combo streak)
 HOLE_PENALTY = 5
 NO_OPEN_3X3_PENALTY = 20
 FILLED_CELL_PENALTY = 0.5
@@ -114,11 +114,17 @@ def final_board_score(bits: int) -> float:
 Move = tuple[int, int, int]  # (piece index, row, col)
 
 
-def solve(board: np.ndarray, pieces: list[np.ndarray | None]) -> tuple[list[Move], float]:
+def solve(
+    board: np.ndarray,
+    pieces: list[np.ndarray | None],
+    streak: int = 0,
+) -> tuple[list[Move], float]:
     """Best sequence of placements for the available pieces.
 
     Returns (moves, score). Prefers sequences that place more pieces;
-    among equals, the highest-scoring one.
+    among equals, the highest-scoring one. `streak` is the current
+    combo count carried over from previous placements, so the search
+    knows a live chain is worth protecting.
     """
     available = [(i, p) for i, p in enumerate(pieces) if p is not None and p.any()]
     placements = {i: piece_placements(p) for i, p in available}
@@ -163,6 +169,6 @@ def solve(board: np.ndarray, pieces: list[np.ndarray | None]) -> tuple[list[Move
         if signature in seen_orders:
             continue
         seen_orders.add(signature)
-        search(start, order, [], 0.0, 0)
+        search(start, order, [], 0.0, streak)
 
     return best_moves, best_key[1]
