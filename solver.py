@@ -36,6 +36,26 @@ def board_to_bits(board: np.ndarray) -> int:
     return bits
 
 
+def bits_to_board(bits: int) -> np.ndarray:
+    board = np.zeros((N, N), dtype=np.uint8)
+    for r in range(N):
+        for c in range(N):
+            if bits & (1 << (r * N + c)):
+                board[r, c] = 1
+    return board
+
+
+def apply_move(board: np.ndarray, shape: np.ndarray, row: int, col: int) -> np.ndarray:
+    """Board after placing the piece and clearing full lines."""
+    mask = 0
+    for r in range(shape.shape[0]):
+        for c in range(shape.shape[1]):
+            if shape[r, c]:
+                mask |= 1 << ((row + r) * N + (col + c))
+    cleared, _ = clear_lines(board_to_bits(board) | mask)
+    return bits_to_board(cleared)
+
+
 def piece_placements(shape: np.ndarray) -> list[tuple[int, int, int]]:
     """All positions of a piece as (mask, row, col) of its top-left."""
     rows, cols = shape.shape

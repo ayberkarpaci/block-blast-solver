@@ -7,6 +7,7 @@
   "tray_br": [793, 1230],
   "grid_size": 8,
   "tray_cell_size": 36.8,
+  "drag_drop_offset": [0, 186],
   "fill_saturation_threshold": 70,
   "fill_value_threshold": 140
 }

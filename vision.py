@@ -121,6 +121,29 @@ def read_pieces(img: np.ndarray, config: dict) -> list[np.ndarray | None]:
     return pieces
 
 
+def piece_grab_points(img: np.ndarray, config: dict) -> list[tuple[int, int] | None]:
+    """Centroid of each tray piece in capture/client coordinates.
+
+    This is where the mouse should grab the piece when auto-playing.
+    """
+    mask = vivid_mask(img, config)
+    x0, y0 = scale_point(config["tray_tl"], config, img)
+    x1, y1 = scale_point(config["tray_br"], config, img)
+    slot_w = (x1 - x0) / 3
+
+    points: list[tuple[int, int] | None] = []
+    for slot in range(3):
+        sx0 = round(x0 + slot * slot_w)
+        sx1 = round(x0 + (slot + 1) * slot_w)
+        sub = mask[y0:y1, sx0:sx1]
+        ys, xs = np.nonzero(sub)
+        if len(xs) == 0:
+            points.append(None)
+        else:
+            points.append((sx0 + round(xs.mean()), y0 + round(ys.mean())))
+    return points
+
+
 def save_debug_image(img: np.ndarray, config: dict, board: np.ndarray) -> str:
     """Save the capture with the detected state drawn on top."""
     os.makedirs(DEBUG_DIR, exist_ok=True)

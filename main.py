@@ -1,10 +1,14 @@
 """Block Blast solver - entry point.
 
 Usage:
+  python main.py play [n]    # auto-play: drag pieces itself (n = max pieces)
   python main.py watch       # live mode: window updates after every move
   python main.py solve       # one-shot: read the board and suggest moves
   python main.py read        # read the current board and save a debug image
   python main.py calibrate   # re-measure corners by clicking (rarely needed)
+
+Emergency stop for play: slam the mouse into the top-left screen
+corner (pyautogui failsafe) or press Ctrl+C in the terminal.
 
 The game window can be behind other windows; it just has to be open
 (not minimized).
@@ -15,10 +19,13 @@ import time
 
 import cv2
 
+sys.stdout.reconfigure(line_buffering=True)
+
+from autoplay import execute_move, set_topmost
 from calibrate import calibrate, load_config
 from capture import WindowNotFound, grab_window
 from overlay import draw_suggestion, save_suggestion_image
-from solver import solve
+from solver import apply_move, solve
 
 SUGGESTION_WINDOW = "Oneri - kapatmak icin ESC"
 MAX_POPUP_HEIGHT = 900
@@ -148,6 +155,94 @@ def cmd_watch() -> None:
     cv2.destroyAllWindows()
 
 
+def suggest_offset(config, board, expected, actual, shape, move) -> None:
+    """If the piece landed at a shifted position, print the pixel offset fix."""
+    import numpy as np
+
+    diff = (actual == 1) & (board == 0)
+    if diff.sum() != shape.sum():
+        return
+    rows, cols = np.nonzero(diff)
+    dr = int(rows.min()) - move[1]
+    dc = int(cols.min()) - move[2]
+    if (dr, dc) == (0, 0):
+        return
+    n = config["grid_size"]
+    cell_w = (config["board_br"][0] - config["board_tl"][0]) / n
+    cell_h = (config["board_br"][1] - config["board_tl"][1]) / n
+    old = config.get("drag_drop_offset", [0, 0])
+    print(
+        f"  ! Parca hedeften ({dr},{dc}) hucre kaymis. config.json'da "
+        f"drag_drop_offset degerini [{round(old[0] - dc * cell_w)}, "
+        f"{round(old[1] - dr * cell_h)}] yap."
+    )
+
+
+def cmd_play(limit: int) -> None:
+    try:
+        config = load_config()
+    except FileNotFoundError:
+        print("config.json yok. Once calistir:  python main.py calibrate")
+        return
+
+    print(f"Otomatik oynama: en fazla {limit} parca yerlestirilecek.")
+    print("ACIL DURDURMA: mouse'u ekranin SOL UST kosesine carptir veya Ctrl+C.\n")
+    set_topmost(config["window_title"], True)
+    try:
+        play_loop(config, limit)
+    finally:
+        set_topmost(config["window_title"], False)
+
+
+def play_loop(config: dict, limit: int) -> None:
+    placed = 0
+    idle_rounds = 0
+    failed_drags = 0
+    while placed < limit:
+        try:
+            img = grab_window(config["window_title"])
+        except WindowNotFound as e:
+            print(e)
+            return
+
+        board = read_board(img, config)
+        pieces = read_pieces(img, config)
+        if all(p is None for p in pieces):
+            idle_rounds += 1
+            if idle_rounds > 5:
+                print("Tepside parca gorunmuyor; duruyorum (oyun bitti / menu acik?).")
+                return
+            time.sleep(1.0)
+            continue
+        idle_rounds = 0
+
+        moves, score = solve(board, pieces)
+        if not moves:
+            print("Yerlestirilebilecek hamle yok - oyun bitmis olabilir.")
+            return
+
+        index, row, col = moves[0]
+        print(f"{placed + 1}. hamle: parca {index + 1} -> satir {row + 1}, sutun {col + 1}")
+        execute_move(img, config, pieces, moves[0])
+        time.sleep(1.3)
+
+        after = read_board(grab_window(config["window_title"]), config)
+        expected = apply_move(board, pieces[index], row, col)
+        if (after == board).all():
+            failed_drags += 1
+            if failed_drags >= 3:
+                print("  ! Surukleme 3 kez ise yaramadi, duruyorum.")
+                return
+            print("  ! Parca yerlesmemis gorunuyor, tekrar deneyecegim.")
+            time.sleep(0.8)
+            continue
+        failed_drags = 0
+        if not (after == expected).all():
+            suggest_offset(config, board, expected, after, pieces[index], moves[0])
+        placed += 1
+    print(f"\nBitti: {placed} parca yerlestirildi.")
+
+
 def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     if command == "calibrate":
@@ -158,6 +253,9 @@ def main() -> None:
         cmd_solve()
     elif command == "watch":
         cmd_watch()
+    elif command == "play":
+        limit = int(sys.argv[2]) if len(sys.argv) > 2 else 1000
+        cmd_play(limit)
     else:
         print(__doc__)
 
