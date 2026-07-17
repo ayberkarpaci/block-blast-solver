@@ -95,7 +95,7 @@ def tray_piece_mask(img: np.ndarray, config: dict) -> np.ndarray:
     event mode) have a background more vivid than the pieces.
     """
     bg = tray_background_color(img, config)
-    return np.abs(img.astype(np.int32) - bg.astype(np.int32)).sum(axis=2) > 150
+    return np.abs(img.astype(np.int32) - bg.astype(np.int32)).sum(axis=2) > 70
 
 
 def read_pieces(img: np.ndarray, config: dict) -> list[np.ndarray | None]:
