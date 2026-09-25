@@ -27,6 +27,27 @@ pyautogui.FAILSAFE = True
 
 DRAG_SECONDS = 0.35
 
+# Frames captured during the most recent drag, for post-mortem dumps
+# when the caller decides the piece did not land.
+last_drag: dict = {"base": None, "frames": []}
+
+
+def dump_last_drag(prefix: str) -> None:
+    """Write the last drag's base capture and measurement frames."""
+    if last_drag["base"] is not None:
+        cv2.imwrite(f"{prefix}_base.png", last_drag["base"])
+    for i, (snap, hint, pos) in enumerate(last_drag["frames"]):
+        diff = (
+            np.abs(snap.astype(np.int32) - last_drag["base"].astype(np.int32)).sum(axis=2)
+            > 120
+        ).astype(np.uint8) * 255
+        vis = cv2.cvtColor(diff, cv2.COLOR_GRAY2BGR)
+        cv2.drawMarker(vis, (round(hint[0]), round(hint[1])), (255, 128, 0), cv2.MARKER_DIAMOND, 20, 2)
+        if pos is not None:
+            cv2.circle(vis, (round(pos[0]), round(pos[1])), 12, (0, 0, 255), 2)
+        cv2.imwrite(f"{prefix}_step{i}_snap.png", snap)
+        cv2.imwrite(f"{prefix}_step{i}_diff.png", vis)
+
 
 def set_topmost(title_part: str, on: bool) -> None:
     """Keep the game above every other window while auto-playing.
@@ -109,6 +130,8 @@ def execute_move(
     index, row, col = move
     shape = pieces[index]
     hwnd = focus_window(config["window_title"])
+    last_drag["base"] = img
+    last_drag["frames"] = []
 
     grab = piece_grab_points(img, config)[index]
     if grab is None:
@@ -148,6 +171,9 @@ def execute_move(
     # same "piece center of mass" space as `target`.
     tmpl_centroid = ((centroid_c + 0.5) * cell_w, (centroid_r + 0.5) * cell_h)
     min_score = 0.3 * float(tmpl_small.sum())
+    tmpl_mask = tmpl > 0
+    tgt_x0 = round(target[0] - tmpl_centroid[0])
+    tgt_y0 = round(target[1] - tmpl_centroid[1])
 
     SEARCH_MARGIN = 350  # the held piece is always this close to the cursor
 
@@ -163,6 +189,18 @@ def execute_move(
         # The vacated tray slot also differs from the base capture and
         # has the piece's exact shape; keep the tray out of the search.
         diff[tray_top:, :] = 0.0
+        # When the placement would clear a line, the game floods the
+        # whole line with a highlight and draws a shape-matched ghost at
+        # the snap position. That flood saturates the template match
+        # and the measured position drifts, so the loop never settles.
+        # But a fully covered footprint at the target means the game
+        # has already locked the piece onto it (ghost or the piece
+        # itself) - report the target so the caller releases there.
+        region = diff[tgt_y0 : tgt_y0 + tmpl.shape[0], tgt_x0 : tgt_x0 + tmpl.shape[1]]
+        if region.shape == tmpl.shape and float(region[tmpl_mask].mean()) > 0.9:
+            print("    hedef uzerinde tam ortusme (hayalet/parca); birakiliyor")
+            last_drag["frames"].append((snap, hint, target))
+            return target
         wx0 = max(0, round(hint[0]) - SEARCH_MARGIN)
         wy0 = max(0, round(hint[1]) - SEARCH_MARGIN)
         window = diff[wy0 : round(hint[1]) + SEARCH_MARGIN, wx0 : round(hint[0]) + SEARCH_MARGIN]
@@ -173,6 +211,7 @@ def execute_move(
         res = cv2.matchTemplate(small, tmpl_small, cv2.TM_CCORR)
         _, max_val, _, _ = cv2.minMaxLoc(res)
         if max_val < min_score:
+            last_drag["frames"].append((snap, hint, None))
             return None
         # Self-similar shapes (e.g. a 1x5 bar) match almost equally at
         # cell-shifted offsets; among all strong peaks take the one
@@ -181,12 +220,19 @@ def execute_move(
         px = wx0 + (xs - pad_x) / SCALE + tmpl_centroid[0]
         py = wy0 + (ys - pad_y) / SCALE + tmpl_centroid[1]
         nearest = np.argmin((px - hint[0]) ** 2 + (py - hint[1]) ** 2)
-        return (float(px[nearest]), float(py[nearest]))
+        pos = (float(px[nearest]), float(py[nearest]))
+        last_drag["frames"].append((snap, hint, pos))
+        return pos
 
     cursor = grab
 
+    # The Google Play Games sidebar occupies the left edge of the
+    # client area; a drag that wanders into it gets canceled by the
+    # launcher, so keep the cursor to the right of it.
+    sidebar_guard = round(110 * img.shape[1] / config["reference_size"][0])
+
     def move_cursor(cx: float, cy: float, duration: float = 0.12) -> tuple[float, float]:
-        cx = min(max(cx, 5), img.shape[1] - 5)
+        cx = min(max(cx, sidebar_guard), img.shape[1] - 5)
         cy = min(max(cy, 5), img.shape[0] - 5)
         sx, sy = win32gui.ClientToScreen(hwnd, (round(cx), round(cy)))
         pyautogui.moveTo(sx, sy, duration=duration)

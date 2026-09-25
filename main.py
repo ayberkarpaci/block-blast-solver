@@ -14,6 +14,7 @@ The game window can be behind other windows; it just has to be open
 (not minimized).
 """
 
+import os
 import sys
 import time
 
@@ -217,6 +218,7 @@ def play_loop(config: dict, limit: int | None) -> None:
     failed_drags = 0
     streak = 0  # live combo count, carried into the solver
     last_failed_piece: int | None = None
+    banned_targets: set[tuple[int, int, int]] = set()
     restarts_without_progress = 0
     while limit is None or placed < limit:
         try:
@@ -268,8 +270,8 @@ def play_loop(config: dict, limit: int | None) -> None:
         excluded = last_failed_piece is not None and sum(p is not None for p in pieces) > 1
         if excluded:
             solve_input[last_failed_piece] = None
-        moves, score = solve(board, solve_input, streak)
-        if not moves and excluded:
+        moves, score = solve(board, solve_input, streak, banned_targets)
+        if not moves and (excluded or banned_targets):
             moves, score = solve(board, pieces, streak)
         if not moves:
             # Board is jammed; the game-over screen should appear shortly.
@@ -300,19 +302,51 @@ def play_loop(config: dict, limit: int | None) -> None:
             continue
         time.sleep(0.6)
 
-        after = read_board(grab_window(config["window_title"]), config)
+        # Clear/celebration animations can corrupt a single read right
+        # after the drop; wait until two consecutive reads agree before
+        # judging whether the piece landed.
+        after_img = grab_window(config["window_title"])
+        after = read_board(after_img, config)
+        for _ in range(6):
+            time.sleep(0.25)
+            img3 = grab_window(config["window_title"])
+            board3 = read_board(img3, config)
+            if (board3 == after).all():
+                break
+            after_img, after = img3, board3
+
+        # A placed piece always leaves its tray slot, so a changed slot
+        # is placement evidence even when the board read glitches.
+        tray_now = read_pieces(after_img, config)
+        slot_same = (
+            tray_now[index] is not None
+            and tray_now[index].shape == pieces[index].shape
+            and (tray_now[index] == pieces[index]).all()
+        )
         expected = apply_move(board, pieces[index], row, col)
-        if (after == board).all():
+        if (after == board).all() and slot_same:
             failed_drags += 1
             last_failed_piece = index
-            if failed_drags >= 5:
-                print("  ! Surukleme 5 kez ise yaramadi, duruyorum.")
+            banned_targets.add(chosen)
+            os.makedirs(os.path.join("debug", "fails"), exist_ok=True)
+            stamp = time.strftime("%H%M%S")
+            cv2.imwrite(os.path.join("debug", "fails", f"{stamp}_before.png"), img)
+            cv2.imwrite(os.path.join("debug", "fails", f"{stamp}_after.png"), after_img)
+            from autoplay import dump_last_drag
+
+            dump_last_drag(os.path.join("debug", "fails", stamp))
+            if failed_drags >= 12:
+                print("  ! Surukleme 12 kez ise yaramadi, duruyorum.")
                 return
             print("  ! Parca yerlesmemis gorunuyor, baska planla deneyecegim.")
-            time.sleep(0.8)
+            # An event popup or celebration can eat drops for a while;
+            # back off so the transient state passes instead of burning
+            # every retry inside it.
+            time.sleep(0.8 if failed_drags < 3 else 8.0)
             continue
         failed_drags = 0
         last_failed_piece = None
+        banned_targets.clear()
         restarts_without_progress = 0
         # Did this placement clear lines? (cells after < cells before + piece)
         cleared = int(board.sum()) + int(pieces[index].sum()) > int(after.sum())

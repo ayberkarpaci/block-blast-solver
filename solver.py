@@ -118,6 +118,7 @@ def solve(
     board: np.ndarray,
     pieces: list[np.ndarray | None],
     streak: int = 0,
+    banned: frozenset[Move] | set[Move] = frozenset(),
 ) -> tuple[list[Move], float]:
     """Best sequence of placements for the available pieces.
 
@@ -150,6 +151,10 @@ def solve(
         index, rest = remaining[0], remaining[1:]
         for mask, r, c in placements[index]:
             if bits & mask:
+                continue
+            # Targets that repeatedly failed to drop are skipped as the
+            # opening move so the plan starts somewhere else.
+            if not moves and (index, r, c) in banned:
                 continue
             placed, lines = clear_lines(bits | mask)
             gained = LINE_SCORE * lines
