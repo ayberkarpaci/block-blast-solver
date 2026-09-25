@@ -135,7 +135,7 @@ def execute_move(
 
     grab = piece_grab_points(img, config)[index]
     if grab is None:
-        raise RuntimeError(f"Parca {index + 1} artik tepside gorunmuyor.")
+        raise RuntimeError(f"Piece {index + 1} is no longer in the tray.")
 
     n = config["grid_size"]
     x0, y0 = scale_point(config["board_tl"], config, img)
@@ -198,7 +198,7 @@ def execute_move(
         # itself) - report the target so the caller releases there.
         region = diff[tgt_y0 : tgt_y0 + tmpl.shape[0], tgt_x0 : tgt_x0 + tmpl.shape[1]]
         if region.shape == tmpl.shape and float(region[tmpl_mask].mean()) > 0.9:
-            print("    hedef uzerinde tam ortusme (hayalet/parca); birakiliyor")
+            print("    footprint fully covered on the target (ghost or piece); releasing")
             last_drag["frames"].append((snap, hint, target))
             return target
         wx0 = max(0, round(hint[0]) - SEARCH_MARGIN)
@@ -265,7 +265,7 @@ def execute_move(
         for step in range(10):
             pos = piece_position((cursor[0], cursor[1] - lift * 0.7))
             if pos is None:
-                print("    surukleme: parca ekranda bulunamadi (iptal olmus olabilir)")
+                print("    drag: piece not found on screen (the drag may have been canceled)")
                 return
             if prev_pos is not None:
                 dcx = cursor[0] - prev_cursor[0]
@@ -277,9 +277,9 @@ def execute_move(
             err_x = target[0] - pos[0]
             err_y = target[1] - pos[1]
             print(
-                f"    surukleme[{step}]: parca ({pos[0]:.0f},{pos[1]:.0f}) "
-                f"hata ({err_x:+.0f},{err_y:+.0f}) imlec ({cursor[0]:.0f},{cursor[1]:.0f}) "
-                f"kazanc ({gain_x:.1f},{gain_y:.1f})"
+                f"    drag[{step}]: piece ({pos[0]:.0f},{pos[1]:.0f}) "
+                f"error ({err_x:+.0f},{err_y:+.0f}) cursor ({cursor[0]:.0f},{cursor[1]:.0f}) "
+                f"gain ({gain_x:.1f},{gain_y:.1f})"
             )
             err = abs(err_x) + abs(err_y)
             if err < best_err:
@@ -294,7 +294,7 @@ def execute_move(
             # Never converged (snap fights or a self-similar shape):
             # release at the best position seen - the game's own grid
             # snap often lands it, and the caller verifies anyway.
-            print(f"    yakinsamadi; en iyi gorulen konumda birakiyorum (hata {best_err:.0f})")
+            print(f"    did not converge; releasing at the best position seen (error {best_err:.0f})")
             move_cursor(*best_cursor)
             time.sleep(0.2)
     finally:

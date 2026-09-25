@@ -22,10 +22,10 @@ CONFIG_PATH = "config.json"
 DEFAULT_WINDOW_TITLE = "Block Blast"
 
 STEPS = [
-    ("board_tl", "Tahtanin SOL UST kosesine tikla"),
-    ("board_br", "Tahtanin SAG ALT kosesine tikla"),
-    ("tray_tl", "Parca alaninin SOL UST kosesine tikla"),
-    ("tray_br", "Parca alaninin SAG ALT kosesine tikla"),
+    ("board_tl", "Click the TOP-LEFT corner of the board"),
+    ("board_br", "Click the BOTTOM-RIGHT corner of the board"),
+    ("tray_tl", "Click the TOP-LEFT corner of the piece tray"),
+    ("tray_br", "Click the BOTTOM-RIGHT corner of the piece tray"),
 ]
 
 MAX_DISPLAY_HEIGHT = 1000
@@ -72,7 +72,7 @@ def calibrate() -> None:
                 (0, 0, 255),
                 2,
             )
-        cv2.imshow("Kalibrasyon", canvas)
+        cv2.imshow("Calibration", canvas)
 
     def on_mouse(event: int, x: int, y: int, flags: int, param) -> None:
         if event != cv2.EVENT_LBUTTONDOWN or state["step"] >= len(STEPS):
@@ -83,15 +83,15 @@ def calibrate() -> None:
         print(f"  {name} = {points[name]}")
         redraw()
 
-    cv2.namedWindow("Kalibrasyon")
-    cv2.setMouseCallback("Kalibrasyon", on_mouse)
-    print("Acilan pencerede sirayla 4 noktaya tikla. Iptal icin ESC.")
+    cv2.namedWindow("Calibration")
+    cv2.setMouseCallback("Calibration", on_mouse)
+    print("Click the 4 points in order in the window that opens. ESC cancels.")
     redraw()
 
     while state["step"] < len(STEPS):
         if cv2.waitKey(50) == 27:  # ESC
             cv2.destroyAllWindows()
-            print("Kalibrasyon iptal edildi.")
+            print("Calibration canceled.")
             return
 
     cv2.destroyAllWindows()
@@ -109,8 +109,8 @@ def calibrate() -> None:
     }
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
-    print(f"Kaydedildi: {CONFIG_PATH}")
-    print("Simdi test et:  python main.py read")
+    print(f"Saved: {CONFIG_PATH}")
+    print("Now test it:  python main.py read")
 
 
 if __name__ == "__main__":

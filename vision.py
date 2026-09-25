@@ -196,9 +196,9 @@ def format_pieces(pieces: list[np.ndarray | None]) -> str:
     """Render the 3 tray pieces side by side."""
     blocks = []
     for i, piece in enumerate(pieces):
-        lines = [f"Parca {i + 1}:"]
+        lines = [f"Piece {i + 1}:"]
         if piece is None:
-            lines.append("(bos)")
+            lines.append("(empty)")
         else:
             lines += [" ".join("#" if c else "." for c in row) for row in piece]
         blocks.append(lines)

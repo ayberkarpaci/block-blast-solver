@@ -30,7 +30,7 @@ def find_window(title_part: str) -> int:
     win32gui.EnumWindows(on_window, None)
     if not matches:
         raise WindowNotFound(
-            f"Basliginda '{title_part}' gecen bir pencere bulunamadi. Oyun acik mi?"
+            f"No window with '{title_part}' in its title. Is the game open?"
         )
     return matches[0]
 
@@ -40,8 +40,8 @@ def grab_window(title_part: str) -> np.ndarray:
     hwnd = find_window(title_part)
     if win32gui.IsIconic(hwnd):
         raise WindowNotFound(
-            "Oyun penceresi simge durumuna kucultulmus. Pencereyi ac "
-            "(arkada kalabilir, kucultulmus olmasin yeter)."
+            "The game window is minimized. Restore it "
+            "(it can stay behind other windows, it just must not be minimized)."
         )
     left, top, right, bottom = win32gui.GetClientRect(hwnd)
     width, height = right - left, bottom - top
@@ -56,7 +56,7 @@ def grab_window(title_part: str) -> np.ndarray:
         # 3 = PW_CLIENTONLY | PW_RENDERFULLCONTENT (works for GPU-rendered windows)
         ok = ctypes.windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 3)
         if not ok:
-            raise RuntimeError("PrintWindow basarisiz oldu.")
+            raise RuntimeError("PrintWindow failed.")
         info = bmp.GetInfo()
         data = bmp.GetBitmapBits(True)
         img = np.frombuffer(data, dtype=np.uint8).reshape(

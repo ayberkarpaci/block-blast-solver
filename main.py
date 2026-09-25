@@ -27,8 +27,15 @@ from calibrate import calibrate, load_config
 from capture import WindowNotFound, grab_window
 from overlay import draw_suggestion, save_suggestion_image
 from solver import apply_move, solve
+from vision import (
+    format_board,
+    format_pieces,
+    read_board,
+    read_pieces,
+    save_debug_image,
+)
 
-SUGGESTION_WINDOW = "Oneri - kapatmak icin ESC"
+SUGGESTION_WINDOW = "Suggestion - ESC to close"
 MAX_POPUP_HEIGHT = 900
 
 
@@ -38,20 +45,13 @@ def show_popup(canvas) -> None:
         canvas = cv2.resize(canvas, None, fx=scale, fy=scale)
     cv2.imshow(SUGGESTION_WINDOW, canvas)
     cv2.setWindowProperty(SUGGESTION_WINDOW, cv2.WND_PROP_TOPMOST, 1)
-from vision import (
-    format_board,
-    format_pieces,
-    read_board,
-    read_pieces,
-    save_debug_image,
-)
 
 
 def cmd_read() -> None:
     try:
         config = load_config()
     except FileNotFoundError:
-        print("config.json yok. Once calistir:  python main.py calibrate")
+        print("config.json not found. Run first:  python main.py calibrate")
         return
 
     try:
@@ -62,20 +62,20 @@ def cmd_read() -> None:
 
     board = read_board(img, config)
     pieces = read_pieces(img, config)
-    print("Okunan tahta (# = dolu, . = bos):\n")
+    print("Board read (# = filled, . = empty):\n")
     print(format_board(board))
-    print("\nOkunan parcalar:\n")
+    print("\nPieces read:\n")
     print(format_pieces(pieces))
     debug_path = save_debug_image(img, config, board)
-    print(f"\nKontrol resmi kaydedildi: {debug_path}")
-    print("Yesil kare = dolu okundu, kirmizi carpi = bos okundu.")
+    print(f"\nDebug image saved: {debug_path}")
+    print("Green square = read as filled, red cross = read as empty.")
 
 
 def cmd_solve() -> None:
     try:
         config = load_config()
     except FileNotFoundError:
-        print("config.json yok. Once calistir:  python main.py calibrate")
+        print("config.json not found. Run first:  python main.py calibrate")
         return
 
     try:
@@ -86,9 +86,9 @@ def cmd_solve() -> None:
 
     board = read_board(img, config)
     pieces = read_pieces(img, config)
-    print("Okunan tahta:\n")
+    print("Board read:\n")
     print(format_board(board))
-    print("\nOkunan parcalar:\n")
+    print("\nPieces read:\n")
     print(format_pieces(pieces))
 
     started = time.perf_counter()
@@ -96,15 +96,15 @@ def cmd_solve() -> None:
     elapsed = time.perf_counter() - started
 
     if not moves:
-        print("\nHicbir parca yerlestirilemiyor gibi gorunuyor!")
+        print("\nNo piece seems to fit anywhere!")
         return
 
-    print(f"\nOnerilen hamleler (arama {elapsed:.1f} sn, skor {score:.1f}):\n")
+    print(f"\nSuggested moves (search {elapsed:.2f} s, score {score:.1f}):\n")
     for step, (index, row, col) in enumerate(moves):
-        print(f"  {step + 1}. Parca {index + 1} -> satir {row + 1}, sutun {col + 1}")
+        print(f"  {step + 1}. piece {index + 1} -> row {row + 1}, column {col + 1}")
     save_suggestion_image(img, config, pieces, moves)
-    print("\nOneri penceresi acildi: 1=kirmizi, 2=turuncu, 3=mavi; sayi = sira.")
-    print("Kapatmak icin pencere seciliyken bir tusa bas.")
+    print("\nSuggestion window open: 1 = red, 2 = orange, 3 = blue; the number is the order.")
+    print("Press any key with the window focused to close it.")
     show_popup(draw_suggestion(img, config, pieces, moves))
     cv2.waitKey(0)
     cv2.destroyAllWindows()
@@ -115,10 +115,10 @@ def cmd_watch() -> None:
     try:
         config = load_config()
     except FileNotFoundError:
-        print("config.json yok. Once calistir:  python main.py calibrate")
+        print("config.json not found. Run first:  python main.py calibrate")
         return
 
-    print("Izleme modu acik. Cikmak icin oneri penceresinde ESC'ye bas.")
+    print("Watch mode on. Press ESC in the suggestion window to quit.")
     last_state = None
     while True:
         try:
@@ -140,12 +140,12 @@ def cmd_watch() -> None:
             if any(p is not None for p in pieces):
                 moves, score = solve(board, pieces)
                 print(
-                    "Yeni durum: "
+                    "New state: "
                     + "; ".join(
-                        f"{s + 1}. parca {i + 1} -> satir {r + 1}, sutun {c + 1}"
+                        f"{s + 1}. piece {i + 1} -> row {r + 1}, column {c + 1}"
                         for s, (i, r, c) in enumerate(moves)
                     )
-                    + f"  (skor {score:.1f})"
+                    + f"  (score {score:.1f})"
                 )
                 show_popup(draw_suggestion(img, config, pieces, moves))
             else:
@@ -173,9 +173,9 @@ def suggest_offset(config, board, expected, actual, shape, move) -> None:
     cell_h = (config["board_br"][1] - config["board_tl"][1]) / n
     old = config.get("drag_drop_offset", [0, 0])
     print(
-        f"  ! Parca hedeften ({dr},{dc}) hucre kaymis. config.json'da "
-        f"drag_drop_offset degerini [{round(old[0] - dc * cell_w)}, "
-        f"{round(old[1] - dr * cell_h)}] yap."
+        f"  ! The piece landed ({dr},{dc}) cells off target. Set drag_drop_offset "
+        f"in config.json to [{round(old[0] - dc * cell_w)}, "
+        f"{round(old[1] - dr * cell_h)}]."
     )
 
 
@@ -183,14 +183,14 @@ def cmd_play(limit: int | None) -> None:
     try:
         config = load_config()
     except FileNotFoundError:
-        print("config.json yok. Once calistir:  python main.py calibrate")
+        print("config.json not found. Run first:  python main.py calibrate")
         return
 
     if limit is None:
-        print("Otomatik oynama: oyun bitene veya durdurulana kadar.")
+        print("Auto-play: until the game ends or you stop it.")
     else:
-        print(f"Otomatik oynama: en fazla {limit} parca yerlestirilecek.")
-    print("ACIL DURDURMA: mouse'u ekranin SOL UST kosesine carptir veya Ctrl+C.\n")
+        print(f"Auto-play: placing at most {limit} pieces.")
+    print("EMERGENCY STOP: slam the mouse into the TOP-LEFT screen corner, or Ctrl+C.\n")
     import win32api
     from pyautogui import FailSafeException
 
@@ -207,7 +207,7 @@ def cmd_play(limit: int | None) -> None:
     try:
         play_loop(config, limit)
     except FailSafeException:
-        print("\nACIL FREN: mouse kosede algilandi, durduruldu.")
+        print("\nEMERGENCY STOP: mouse detected in the corner, stopped.")
     finally:
         set_topmost(config["window_title"], False)
 
@@ -250,14 +250,14 @@ def play_loop(config: dict, limit: int | None) -> None:
             if idle_rounds >= 3 and restart_if_game_over(config):
                 restarts_without_progress += 1
                 if restarts_without_progress > 3:
-                    print("Restart tiklamalari ise yaramiyor; duruyorum (reklam/bilinmeyen ekran?).")
+                    print("Restart clicks are not working; stopping (an ad or an unknown screen?).")
                     return
-                print("Oyun bitmisti - yeni oyun basladi.")
+                print("The game was over - started a new one.")
                 idle_rounds = 0
                 time.sleep(2.0)
                 continue
             if idle_rounds > 8:
-                print("Tepside parca gorunmuyor; duruyorum (menu/reklam acik olabilir).")
+                print("No pieces in the tray; stopping (a menu or an ad may be open).")
                 return
             time.sleep(1.0)
             continue
@@ -279,21 +279,21 @@ def play_loop(config: dict, limit: int | None) -> None:
             if restart_if_game_over(config):
                 restarts_without_progress += 1
                 if restarts_without_progress > 3:
-                    print("Restart tiklamalari ise yaramiyor; duruyorum (reklam/bilinmeyen ekran?).")
+                    print("Restart clicks are not working; stopping (an ad or an unknown screen?).")
                     return
-                print("Oyun bitti - yeni oyun basladi.")
+                print("Game over - started a new one.")
                 failed_drags = 0
                 time.sleep(2.0)
                 continue
             if failed_drags > 6:
-                print("Yerlestirilebilecek hamle yok ve oyun-bitti ekrani gorunmedi; duruyorum.")
+                print("No move fits and no game-over screen appeared; stopping.")
                 return
             time.sleep(1.5)
             continue
 
         chosen = moves[0]
         index, row, col = chosen
-        print(f"{placed + 1}. hamle: parca {index + 1} -> satir {row + 1}, sutun {col + 1}")
+        print(f"Move {placed + 1}: piece {index + 1} -> row {row + 1}, column {col + 1}")
         try:
             execute_move(img, config, pieces, chosen)
         except RuntimeError as e:
@@ -336,9 +336,9 @@ def play_loop(config: dict, limit: int | None) -> None:
 
             dump_last_drag(os.path.join("debug", "fails", stamp))
             if failed_drags >= 12:
-                print("  ! Surukleme 12 kez ise yaramadi, duruyorum.")
+                print("  ! 12 drags in a row failed; stopping.")
                 return
-            print("  ! Parca yerlesmemis gorunuyor, baska planla deneyecegim.")
+            print("  ! The piece does not seem to have landed; trying another plan.")
             # An event popup or celebration can eat drops for a while;
             # back off so the transient state passes instead of burning
             # every retry inside it.
@@ -352,11 +352,11 @@ def play_loop(config: dict, limit: int | None) -> None:
         cleared = int(board.sum()) + int(pieces[index].sum()) > int(after.sum())
         streak = streak + 1 if cleared else 0
         if cleared:
-            print(f"    patlatma! combo zinciri: {streak}")
+            print(f"    cleared! combo streak: {streak}")
         if not (after == expected).all():
             suggest_offset(config, board, expected, after, pieces[index], moves[0])
         placed += 1
-    print(f"\nBitti: {placed} parca yerlestirildi.")
+    print(f"\nDone: placed {placed} pieces.")
 
 
 def main() -> None:
