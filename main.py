@@ -283,7 +283,11 @@ def play_loop(config: dict, limit: int | None) -> None:
         if excluded:
             solve_input[last_failed_piece] = None
         moves, score = solve(board, solve_input, streak, banned_targets)
-        if not moves and (excluded or banned_targets):
+        if not moves and excluded:
+            # Keep the bans: dropping them here made the bot retry the
+            # exact target that just failed, over and over.
+            moves, score = solve(board, pieces, streak, banned_targets)
+        if not moves and banned_targets:
             moves, score = solve(board, pieces, streak)
         if not moves:
             # Board is jammed; the game-over screen should appear shortly.

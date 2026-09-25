@@ -19,6 +19,7 @@ import win32con
 import win32gui
 
 from capture import find_window, grab_window
+from snap import drop_window
 from solver import Move
 from vision import piece_grab_points, scale_point
 
@@ -153,6 +154,7 @@ def execute_move(
     )
 
     tray_top = scale_point(config["tray_tl"], config, img)[1]
+    release_window = drop_window(row, col, shape.shape[0], shape.shape[1], n, cell_w, cell_h)
 
     # Template of the floating piece at board scale. Position is found
     # by pattern matching instead of a centroid: when the piece passes
@@ -198,6 +200,8 @@ def execute_move(
         # itself) - report the target so the caller releases there.
         region = diff[tgt_y0 : tgt_y0 + tmpl.shape[0], tgt_x0 : tgt_x0 + tmpl.shape[1]]
         if region.shape == tmpl.shape and float(region[tmpl_mask].mean()) > 0.9:
+            nonlocal locked
+            locked = True
             print("    footprint fully covered on the target (ghost or piece); releasing")
             last_drag["frames"].append((snap, hint, target))
             return target
@@ -213,10 +217,13 @@ def execute_move(
         if max_val < min_score:
             last_drag["frames"].append((snap, hint, None))
             return None
-        # Self-similar shapes (e.g. a 1x5 bar) match almost equally at
-        # cell-shifted offsets; among all strong peaks take the one
-        # closest to the expected position instead of the global max.
-        ys, xs = np.nonzero(res >= 0.8 * max_val)
+        # Self-similar shapes (e.g. a 1x5 bar partly over filled cells)
+        # can match almost equally at cell-shifted offsets; among the
+        # near-ties take the one closest to the expected position. The
+        # band must stay narrow: at 80% a weaker copy one cell off was
+        # often closer to the guess than the real piece (T and S shapes),
+        # and the drop landed a row away.
+        ys, xs = np.nonzero(res >= 0.93 * max_val)
         px = wx0 + (xs - pad_x) / SCALE + tmpl_centroid[0]
         py = wy0 + (ys - pad_y) / SCALE + tmpl_centroid[1]
         nearest = np.argmin((px - hint[0]) ** 2 + (py - hint[1]) ** 2)
@@ -225,6 +232,7 @@ def execute_move(
         return pos
 
     cursor = grab
+    locked = False  # set by piece_position when the game shows the piece locked on target
 
     # The Google Play Games sidebar occupies the left edge of the
     # client area; a drag that wanders into it gets canceled by the
@@ -248,9 +256,11 @@ def execute_move(
         # Head start: jump to where the target cursor position should
         # be, so the measure loop only has to fine-tune.
         est_piece = (grab[0], grab[1] - lift)
+        # Next to the board edge, aim slightly inside (see snap.py).
+        aim = (target[0] + release_window.aim_dx, target[1] + release_window.aim_dy)
         cursor = move_cursor(
-            cursor[0] + (target[0] - est_piece[0]) / gain,
-            cursor[1] + (target[1] - est_piece[1]) / gain,
+            cursor[0] + (aim[0] - est_piece[0]) / gain,
+            cursor[1] + (aim[1] - est_piece[1]) / gain,
         )
         time.sleep(0.15)
 
@@ -263,7 +273,18 @@ def execute_move(
         best_err = float("inf")
         best_cursor = cursor
         for step in range(10):
-            pos = piece_position((cursor[0], cursor[1] - lift * 0.7))
+            # Where to look for the piece: first from the cursor (the
+            # game holds it roughly `lift` above), then from the last
+            # measurement plus the cursor move since. The cursor-only
+            # guess is off by up to a cell near the board edges, and
+            # for self-similar shapes (S, bars) the closest match to a
+            # wrong guess is a copy shifted by one cell.
+            if prev_pos is None:
+                hint = (cursor[0], cursor[1] - lift * 0.7)
+            else:
+                hint = (prev_pos[0] + (cursor[0] - prev_cursor[0]) * gain_x,
+                        prev_pos[1] + (cursor[1] - prev_cursor[1]) * gain_y)
+            pos = piece_position(hint)
             if pos is None:
                 print("    drag: piece not found on screen (the drag may have been canceled)")
                 return
@@ -285,10 +306,13 @@ def execute_move(
             if err < best_err:
                 best_err = err
                 best_cursor = cursor
-            if abs(err_x) < cell_w / 3 and abs(err_y) < cell_h / 3:
+            if locked or release_window.accepts(err_x, err_y):
                 break
             prev_pos, prev_cursor = pos, cursor
-            cursor = move_cursor(cursor[0] + err_x / gain_x, cursor[1] + err_y / gain_y)
+            cursor = move_cursor(
+                cursor[0] + (err_x + release_window.aim_dx) / gain_x,
+                cursor[1] + (err_y + release_window.aim_dy) / gain_y,
+            )
             time.sleep(0.15)
         else:
             # Never converged (snap fights or a self-similar shape):
