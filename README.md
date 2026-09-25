@@ -39,8 +39,11 @@ minimized):
 
 Auto-play makes the game window topmost (clicks go to whichever window is
 on top), grabs a piece and steers it onto the target cells before
-releasing. **Emergency stop:** slam the mouse into the top-left screen
-corner, or press Ctrl+C in the terminal.
+releasing. **Emergency stop: press ESC.** It works from any window,
+even in the middle of a drag: the bot lets go of the piece, drops the
+game window's always-on-top flag and exits at once. Ctrl+C in the
+terminal works too. (The top-left-corner mouse failsafe is still on, but
+it is not reliable while the bot itself is moving the mouse.)
 
 `solve` and `watch` draw the plan onto the captured board
 (1 = red, 2 = orange, 3 = blue) and save `debug/suggestion.png`.
@@ -128,6 +131,7 @@ seeds (1000+) from the ones reported above (0-99).
 | `pieces.py` | The piece set |
 | `simulator.py`, `benchmark.py` | Headless game and solver benchmark |
 | `autoplay.py` | Mouse control with closed-loop dragging |
+| `emergency.py` | ESC emergency stop |
 | `overlay.py` | Draws suggestions onto the capture |
 | `tests/` | Solver and simulator tests (run in CI) |
 

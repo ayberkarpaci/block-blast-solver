@@ -7,8 +7,10 @@ Usage:
   python main.py read        # read the current board and save a debug image
   python main.py calibrate   # re-measure corners by clicking (rarely needed)
 
-Emergency stop for play: slam the mouse into the top-left screen
-corner (pyautogui failsafe) or press Ctrl+C in the terminal.
+Emergency stop for play: press ESC. It works from any window, even in
+the middle of a drag. (Ctrl+C in the terminal and slamming the mouse
+into the top-left screen corner also stop it, but the corner is not
+reliable while the bot is moving the mouse.)
 
 The game window can be behind other windows; it just has to be open
 (not minimized).
@@ -190,11 +192,21 @@ def cmd_play(limit: int | None) -> None:
         print("Auto-play: until the game ends or you stop it.")
     else:
         print(f"Auto-play: placing at most {limit} pieces.")
-    print("EMERGENCY STOP: slam the mouse into the TOP-LEFT screen corner, or Ctrl+C.\n")
+    print("EMERGENCY STOP: press ESC (works from any window, even mid-drag).\n")
     import win32api
+    import win32con
     from pyautogui import FailSafeException
 
     from autoplay import focus_window
+    from emergency import watch_for_escape
+
+    def emergency_stop() -> None:
+        # Let go of a piece that is mid-drag, and give the screen back.
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+        set_topmost(config["window_title"], False)
+        print("\nEMERGENCY STOP: ESC pressed, stopped.", flush=True)
+
+    watch_for_escape(emergency_stop)
 
     # If the last run was stopped by slamming the mouse into the
     # top-left corner, the cursor is still parked there and would

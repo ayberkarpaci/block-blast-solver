@@ -6,8 +6,8 @@ piece by its center or by the grabbed point. An optional
 `drag_drop_offset` [dx, dy] in config compensates if the game lifts
 the piece away from the cursor while dragging.
 
-Safety: pyautogui's failsafe is active — slam the mouse into the
-top-left screen corner to abort immediately.
+Safety: main.py stops everything when ESC is pressed (see
+emergency.py). pyautogui's corner failsafe stays on as a backup.
 """
 
 import time
